@@ -174,7 +174,7 @@ impl Timer {
     fn settings_modal(&self) -> Element<Message> {
         const MINUTE: f64 = 60.0;
         let work_slider = iced::widget::slider(
-            1.0..=60.0,
+            5.0..=60.0,
             self.work_interval / MINUTE,
             Message::WorkIntervalChanged,
         )
@@ -182,7 +182,7 @@ impl Timer {
         .width(200);
 
         let break_slider = iced::widget::slider(
-            1.0..=60.0,
+            5.0..=60.0,
             self.break_interval / MINUTE,
             Message::BreakIntervalChanged,
         )
