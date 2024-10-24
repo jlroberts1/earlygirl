@@ -6,31 +6,31 @@ use notify_rust::Notification;
 use std::time::{Duration, Instant};
 
 fn main() -> iced::Result {
-    ::iced::application("Earlygirl", Timer::update, Timer::view)
-        .theme(Timer::theme)
-        .subscription(Timer::subscription)
+    ::iced::application("Earlygirl", Earlygirl::update, Earlygirl::view)
+        .theme(Earlygirl::theme)
+        .subscription(Earlygirl::subscription)
         .run()
 }
 
-struct Timer {
+struct Earlygirl {
     theme: Theme,
     current_timer_duration: f64,
     interval: f64,
     timer_type: TimerType,
-    state: State,
+    timer_state: TimerState,
     work_interval: f64,
     break_interval: f64,
     show_modal: bool,
 }
 
-impl Default for Timer {
+impl Default for Earlygirl {
     fn default() -> Self {
         Self {
             theme: Theme::CatppuccinMocha,
             current_timer_duration: 0.0,
             interval: 10.0 * 60.0,
             timer_type: TimerType::WorkTime,
-            state: State::Idle,
+            timer_state: TimerState::Idle,
             work_interval: 40.0 * 60.0,
             break_interval: 5.0 * 60.0,
             show_modal: false,
@@ -45,7 +45,7 @@ enum TimerType {
 }
 
 #[derive(Default)]
-enum State {
+enum TimerState {
     #[default]
     Idle,
     Ticking {
@@ -73,16 +73,16 @@ impl TimerType {
     }
 }
 
-impl Timer {
+impl Earlygirl {
     fn theme(&self) -> Theme {
         self.theme.clone()
     }
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::Toggle => match self.state {
-                State::Idle => {
-                    self.state = State::Ticking {
+            Message::Toggle => match self.timer_state {
+                TimerState::Idle => {
+                    self.timer_state = TimerState::Ticking {
                         last_tick: Instant::now(),
                     };
                     self.current_timer_duration = 0.0;
@@ -91,18 +91,18 @@ impl Timer {
                         TimerType::BreakTime => self.break_interval,
                     };
                 }
-                State::Ticking { .. } => {
-                    self.state = State::Idle;
+                TimerState::Ticking { .. } => {
+                    self.timer_state = TimerState::Idle;
                 }
             },
             Message::Tick(now) => {
-                if let State::Ticking { last_tick } = &mut self.state {
+                if let TimerState::Ticking { last_tick } = &mut self.timer_state {
                     let time_elapsed = now.duration_since(*last_tick).as_secs_f64();
                     self.current_timer_duration += time_elapsed;
                     *last_tick = now;
 
                     if self.current_timer_duration >= self.interval {
-                        self.state = State::Idle;
+                        self.timer_state = TimerState::Idle;
                         self.timer_type.update();
                         self.current_timer_duration = 0.0;
                         self.interval = match self.timer_type {
@@ -133,13 +133,13 @@ impl Timer {
                 }
             }
             Message::Reset => {
-                self.state = State::Idle;
+                self.timer_state = TimerState::Idle;
                 self.current_timer_duration = 0.0;
                 self.interval = self.work_interval;
             }
             Message::SwitchWorkType => {
                 self.timer_type.update();
-                self.state = State::Idle;
+                self.timer_state = TimerState::Idle;
                 self.current_timer_duration = 0.0;
                 self.interval = match self.timer_type {
                     TimerType::WorkTime => self.work_interval,
@@ -153,9 +153,9 @@ impl Timer {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let tick = match self.state {
-            State::Idle => Subscription::none(),
-            State::Ticking { .. } => time::every(Duration::from_millis(10)).map(Message::Tick),
+        let tick = match self.timer_state {
+            TimerState::Idle => Subscription::none(),
+            TimerState::Ticking { .. } => time::every(Duration::from_millis(10)).map(Message::Tick),
         };
 
         fn handle_hotkey(key: keyboard::Key, _modifiers: keyboard::Modifiers) -> Option<Message> {
@@ -225,9 +225,9 @@ impl Timer {
         };
 
         let start_pause_button = {
-            let label = match self.state {
-                State::Idle => "Start",
-                State::Ticking { .. } => "Pause",
+            let label = match self.timer_state {
+                TimerState::Idle => "Start",
+                TimerState::Ticking { .. } => "Pause",
             };
             button(label)
                 .style(|theme: &Theme, status| {
@@ -256,9 +256,9 @@ impl Timer {
 
         let switch_timer_type_button = button("Switch").on_press(Message::SwitchWorkType);
 
-        let working_label = match self.state {
-            State::Ticking { .. } => "Working!",
-            State::Idle => "Start Working!",
+        let working_label = match self.timer_state {
+            TimerState::Ticking { .. } => "Working!",
+            TimerState::Idle => "Start Working!",
         };
 
         let timer_label = {
