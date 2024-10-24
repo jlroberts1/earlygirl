@@ -1,31 +1,45 @@
 use iced::keyboard;
 use iced::time;
 use iced::widget::{button, center, column, progress_bar, row, text};
-use iced::{Center, Element, Subscription};
+use iced::{Center, Element, Subscription, Theme};
+
 use std::time::{Duration, Instant};
 
 fn main() -> iced::Result {
-    iced::application("Timer", Timer::update, Timer::view)
+    ::iced::application("Earlygirl", Timer::update, Timer::view)
+        .theme(Timer::theme)
         .subscription(Timer::subscription)
         .run()
 }
 
 struct Timer {
-    current_timer_duration: Duration,
-    timer_progress: f32,
-    interval: Duration,
+    theme: Theme,
+    current_timer_duration: f64,
+    interval: f64,
+    work_interval: f64,
+    break_interval: f64,
+    timer_type: TimerType,
     state: State,
 }
 
 impl Default for Timer {
     fn default() -> Self {
         Self {
-            current_timer_duration: Duration::new(0, 0),
-            timer_progress: 100 as f32,
-            interval: Duration::new(10, 0),
+            theme: Theme::CatppuccinMocha,
+            current_timer_duration: 0.0,
+            interval: 10.0 * 60.0,
+            work_interval: 10.0 * 60.0,
+            break_interval: 5.0 * 60.0,
+            timer_type: TimerType::WorkTime,
             state: State::Idle,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+enum TimerType {
+    WorkTime,
+    BreakTime,
 }
 
 #[derive(Default)]
@@ -40,33 +54,38 @@ enum State {
 #[derive(Debug, Clone)]
 enum Message {
     Toggle,
-    Reset,
     Tick(Instant),
+    WorkIntervalChanged(f64),
+    BreakIntervalChanged(f64),
+    Reset,
+    SwitchWorkType,
 }
-fn calculate_progress(current_timer_duration: Duration, interval: Duration) -> f32 {
-    if interval.as_secs() == 0 {
-        return 0.0;
+
+impl TimerType {
+    fn update(&mut self) {
+        match self {
+            TimerType::WorkTime => *self = TimerType::BreakTime,
+            TimerType::BreakTime => *self = TimerType::WorkTime,
+        }
     }
-
-    let current_secs = current_timer_duration.as_secs() as f32;
-    let interval_secs = interval.as_secs() as f32;
-
-    let progress_percentage = if current_secs > interval_secs {
-        100.0
-    } else {
-        (current_secs as f32 / interval_secs as f32) * 100.0
-    };
-
-    progress_percentage.clamp(0.0, 100.0)
 }
 
 impl Timer {
+    fn theme(&self) -> Theme {
+        self.theme.clone()
+    }
+
     fn update(&mut self, message: Message) {
         match message {
             Message::Toggle => match self.state {
                 State::Idle => {
                     self.state = State::Ticking {
                         last_tick: Instant::now(),
+                    };
+                    self.current_timer_duration = 0.0;
+                    self.interval = match self.timer_type {
+                        TimerType::WorkTime => self.work_interval,
+                        TimerType::BreakTime => self.break_interval,
                     };
                 }
                 State::Ticking { .. } => {
@@ -75,17 +94,46 @@ impl Timer {
             },
             Message::Tick(now) => {
                 if let State::Ticking { last_tick } = &mut self.state {
-                    self.current_timer_duration += now - *last_tick;
+                    let time_elapsed = now.duration_since(*last_tick).as_secs_f64();
+                    self.current_timer_duration += time_elapsed;
                     *last_tick = now;
-                    if self.current_timer_duration == self.interval {
-                        self.state = State::Idle
+
+                    if self.current_timer_duration >= self.interval {
+                        self.state = State::Idle;
+                        self.timer_type.update();
+                        self.current_timer_duration = 0.0;
+                        self.interval = match self.timer_type {
+                            TimerType::WorkTime => self.work_interval,
+                            TimerType::BreakTime => self.break_interval,
+                        };
                     };
-                    self.timer_progress =
-                        calculate_progress(self.current_timer_duration, self.interval);
+                }
+            }
+            Message::WorkIntervalChanged(new_interval) => {
+                self.work_interval = new_interval * 60.0;
+                if let TimerType::WorkTime = self.timer_type {
+                    self.interval = self.work_interval;
+                }
+            }
+            Message::BreakIntervalChanged(new_interval) => {
+                self.break_interval = new_interval * 60.0;
+                if let TimerType::BreakTime = self.timer_type {
+                    self.interval = self.break_interval;
                 }
             }
             Message::Reset => {
-                self.current_timer_duration = Duration::default();
+                self.state = State::Idle;
+                self.current_timer_duration = 0.0;
+                self.interval = self.work_interval;
+            }
+            Message::SwitchWorkType => {
+                self.timer_type.update();
+                self.state = State::Idle;
+                self.current_timer_duration = 0.0;
+                self.interval = match self.timer_type {
+                    TimerType::WorkTime => self.work_interval,
+                    TimerType::BreakTime => self.break_interval,
+                };
             }
         }
     }
@@ -101,7 +149,7 @@ impl Timer {
 
             match key.as_ref() {
                 keyboard::Key::Named(key::Named::Space) => Some(Message::Toggle),
-                keyboard::Key::Character("r") => Some(Message::Reset),
+                // keyboard::Key::Character("r") => Some(Message::Reset),
                 _ => None,
             }
         }
@@ -110,38 +158,80 @@ impl Timer {
     }
 
     fn view(&self) -> Element<Message> {
-        const MINUTE: u64 = 60;
-        const HOUR: u64 = 60 * MINUTE;
-        let time_remaining = if (self.interval.as_secs() <= self.current_timer_duration.as_secs()) {
-            0
+        const MINUTE: f64 = 60.0;
+        const HOUR: f64 = 60.0 * MINUTE;
+        let time_remaining = if self.interval <= self.current_timer_duration {
+            0.0
         } else {
-            self.interval.as_secs() - self.current_timer_duration.as_secs()
+            self.interval - self.current_timer_duration
         };
 
         let duration = text!(
             "{:0>2}:{:0>2}:{:0>2}",
-            time_remaining / HOUR,
-            (time_remaining % HOUR) / MINUTE,
-            time_remaining % MINUTE,
+            (time_remaining / HOUR).floor(),
+            ((time_remaining % HOUR) / MINUTE).floor(),
+            (time_remaining % MINUTE).floor()
         )
-        .size(40);
+        .size(80);
 
         let button = |label| button(text(label).align_x(Center)).padding(10).width(80);
 
         let toggle_button = {
             let label = match self.state {
                 State::Idle => "Start",
-                State::Ticking { .. } => "Stop",
+                State::Ticking { .. } => "Pause",
             };
             button(label).on_press(Message::Toggle)
         };
 
-        let row = row![duration, toggle_button].align_y(Center).spacing(20);
+        let reset_button = button("Reset").on_press(Message::Reset);
+        let switch_timer_type_button = button("Switch").on_press(Message::SwitchWorkType);
 
-        let content = column![progress_bar(0.0..=100.0, self.timer_progress), row]
-            .align_x(Center)
-            .padding(20)
-            .spacing(20);
+        let working_label = match self.state {
+            State::Ticking { .. } => "Working!",
+            State::Idle => "Start Working!",
+        };
+
+        let timer_label = {
+            let label = match self.timer_type {
+                TimerType::WorkTime => working_label,
+                TimerType::BreakTime => "Break Time!",
+            };
+            text(label).size(30)
+        };
+
+        let work_slider = iced::widget::slider(
+            5.0..=60.0,
+            self.work_interval / MINUTE,
+            Message::WorkIntervalChanged,
+        )
+        .step(5)
+        .width(200);
+
+        let break_slider = iced::widget::slider(
+            5.0..=30.0,
+            self.break_interval / MINUTE,
+            Message::BreakIntervalChanged,
+        )
+        .step(5)
+        .width(200);
+
+        let timer_progress = (self.current_timer_duration / self.interval) * 100.0;
+        let progress_bar = progress_bar(0.0..=100.0, timer_progress as f32);
+        let row = row![toggle_button, switch_timer_type_button, reset_button,].spacing(20);
+        let content = column![
+            timer_label,
+            duration,
+            progress_bar,
+            row,
+            text("Set Work Time (minutes):"),
+            work_slider,
+            text("Set Break Time (minutes):"),
+            break_slider,
+        ]
+        .align_x(Center)
+        .padding(20)
+        .spacing(20);
         center(content).into()
     }
 }
