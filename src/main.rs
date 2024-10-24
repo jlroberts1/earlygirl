@@ -1,10 +1,8 @@
 use iced::keyboard;
 use iced::time;
 use iced::widget::{button, column, progress_bar, row, text, Column, Container, Text};
-use iced::Length;
-use iced::{Center, Element};
-use iced::{Subscription, Theme};
-
+use iced::{Center, Element, Length, Subscription, Theme};
+use notify_rust::Notification;
 use std::time::{Duration, Instant};
 
 fn main() -> iced::Result {
@@ -111,6 +109,14 @@ impl Timer {
                             TimerType::WorkTime => self.work_interval,
                             TimerType::BreakTime => self.break_interval,
                         };
+                        let summary_label = match self.timer_type {
+                            TimerType::WorkTime => "Time to get back to work!",
+                            TimerType::BreakTime => "Time for a break!",
+                        };
+                        let _ = Notification::new()
+                            .summary(summary_label)
+                            .appname("Earlygirl")
+                            .show();
                     };
                 }
             }
@@ -168,7 +174,7 @@ impl Timer {
     fn settings_modal(&self) -> Element<Message> {
         const MINUTE: f64 = 60.0;
         let work_slider = iced::widget::slider(
-            5.0..=60.0,
+            1.0..=60.0,
             self.work_interval / MINUTE,
             Message::WorkIntervalChanged,
         )
@@ -176,7 +182,7 @@ impl Timer {
         .width(200);
 
         let break_slider = iced::widget::slider(
-            5.0..=30.0,
+            1.0..=60.0,
             self.break_interval / MINUTE,
             Message::BreakIntervalChanged,
         )

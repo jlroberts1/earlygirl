@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 iced = { version = "0.13", features=["tokio"]}
 chrono = "0.4"
+notify-rust = "4"
