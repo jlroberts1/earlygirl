@@ -1,4 +1,4 @@
-use iced::widget::{button, column, progress_bar, row, text, Column, Container, Text};
+use iced::widget::{button, progress_bar, row, text, Column, Container, Row, Text};
 use iced::{keyboard, time, Center, Element, Length, Subscription, Theme};
 use notify_rust::Notification;
 use std::time::{Duration, Instant};
@@ -150,16 +150,18 @@ impl Earlygirl {
                 self.interval = self.timer_settings.work_interval;
             }
             Message::SwitchWorkType => {
-                self.timer_type = match self.timer_type {
-                    TimerType::WorkTime => TimerType::BreakTime,
-                    TimerType::BreakTime => TimerType::WorkTime,
+                match self.timer_type {
+                    TimerType::WorkTime => {
+                        self.timer_type = TimerType::BreakTime;
+                        self.interval = self.timer_settings.break_interval;
+                    }
+                    TimerType::BreakTime => {
+                        self.timer_type = TimerType::WorkTime;
+                        self.interval = self.timer_settings.work_interval;
+                    }
                 };
                 self.timer_state = TimerState::Idle;
                 self.current_timer_duration = 0.0;
-                self.interval = match self.timer_type {
-                    TimerType::WorkTime => self.timer_settings.work_interval,
-                    TimerType::BreakTime => self.timer_settings.break_interval,
-                };
             }
             Message::ToggleSettings => {
                 self.show_modal = !self.show_modal;
@@ -306,13 +308,21 @@ impl Earlygirl {
         let timer_progress = (self.current_timer_duration / self.interval) * 100.0;
         let progress_bar = progress_bar(0.0..=100.0, timer_progress as f32);
 
-        let row = row![start_pause_button, switch_timer_type_button, reset_button,].spacing(20);
-        let mut content = column![timer_label, duration, progress_bar, row,]
-            .align_x(Center)
-            .padding(20)
-            .spacing(20);
+        let row = Row::new()
+            .spacing(20)
+            .push(start_pause_button)
+            .push(switch_timer_type_button)
+            .push(reset_button);
 
-        content = content.push(settings_button);
+        let mut content = Column::new()
+            .align_x(Center)
+            .spacing(20)
+            .padding(20)
+            .push(timer_label)
+            .push(duration)
+            .push(progress_bar)
+            .push(row)
+            .push(settings_button);
 
         if self.show_modal {
             let modal = self.settings_modal();
