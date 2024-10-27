@@ -1,6 +1,9 @@
 extern crate preferences;
-use iced::widget::{button, progress_bar, row, text, Column, Container, Row, Text};
-use iced::{keyboard, time, Center, Element, Length, Subscription, Theme};
+use iced::widget::{
+    button, center, container, mouse_area, opaque, progress_bar, row, stack, text, Column,
+    Container, Row, Text,
+};
+use iced::{keyboard, time, Center, Color, Element, Length, Subscription, Theme};
 use notify_rust::Notification;
 use preferences::{AppInfo, Preferences};
 use serde::{Deserialize, Serialize};
@@ -251,7 +254,7 @@ impl Earlygirl {
         let work_widget = row![Text::new(format!("{work_value} minutes"))].padding([0, 10]);
         let break_value = self.preferences.break_interval / MINUTE;
         let break_label = row![Text::new(format!("{break_value} minutes"))].padding([0, 10]);
-
+        let close_button = button("Close").on_press(Message::ToggleSettings);
         Column::new()
             .spacing(20)
             .padding(20)
@@ -261,6 +264,7 @@ impl Earlygirl {
             .push(row![break_slider, break_label,])
             .push(auto_start_work)
             .push(auto_start_break)
+            .push(close_button)
             .into()
     }
 
@@ -343,7 +347,7 @@ impl Earlygirl {
             .push(switch_timer_type_button)
             .push(reset_button);
 
-        let mut content = Column::new()
+        let content = Column::new()
             .align_x(Center)
             .spacing(20)
             .padding(20)
@@ -354,13 +358,44 @@ impl Earlygirl {
             .push(settings_button);
 
         if self.show_modal {
-            let modal = self.settings_modal();
-            content = content.push(modal);
+            let model = container(self.settings_modal())
+                .padding(10)
+                .style(container::rounded_box);
+            modal(content, model, Message::ToggleSettings)
+        } else {
+            Container::new(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
         }
-
-        Container::new(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
     }
+}
+
+fn modal<'a, Message>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_blur: Message,
+) -> Element<'a, Message>
+where
+    Message: Clone + 'a,
+{
+    stack![
+        base.into(),
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| {
+                container::Style {
+                    background: Some(
+                        Color {
+                            a: 0.8,
+                            ..Color::BLACK
+                        }
+                        .into(),
+                    ),
+                    ..container::Style::default()
+                }
+            }))
+            .on_press(on_blur)
+        )
+    ]
+    .into()
 }
