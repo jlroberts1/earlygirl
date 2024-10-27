@@ -294,7 +294,7 @@ impl Earlygirl {
                 true => "Hide Settings",
                 false => "Show Settings",
             };
-            button(text(label)).on_press(Message::ToggleSettings)
+            timer_button(label, || Message::ToggleSettings)
         };
 
         let start_pause_button = {
@@ -302,32 +302,12 @@ impl Earlygirl {
                 TimerState::Idle => "Start",
                 TimerState::Ticking { .. } => "Pause",
             };
-            button(label)
-                .style(|theme: &Theme, status| {
-                    let palette = theme.extended_palette();
-                    match status {
-                        button::Status::Active => {
-                            button::Style::default().with_background(palette.success.strong.color)
-                        }
-                        _ => button::primary(theme, status),
-                    }
-                })
-                .on_press(Message::Toggle)
+            timer_button(label, || Message::Toggle)
         };
 
-        let reset_button = button("Reset")
-            .style(|theme: &Theme, status| {
-                let palette = theme.extended_palette();
-                match status {
-                    button::Status::Active => {
-                        button::Style::default().with_background(palette.secondary.strong.color)
-                    }
-                    _ => button::primary(theme, status),
-                }
-            })
-            .on_press(Message::Reset);
+        let reset_button = timer_button("Reset", || Message::Reset);
 
-        let switch_timer_type_button = button("Switch").on_press(Message::SwitchWorkType);
+        let switch_timer_type_button = timer_button("Switch", || Message::SwitchWorkType);
 
         let working_label = match self.timer_state {
             TimerState::Ticking { .. } => "Working!",
@@ -373,6 +353,15 @@ impl Earlygirl {
                 .into()
         }
     }
+}
+
+fn timer_button<'a>(
+    text: impl Into<Element<'a, Message>>,
+    on_press: impl Fn() -> Message + 'a,
+) -> Element<'a, Message> {
+    iced::widget::button::Button::new(text)
+        .on_press(on_press())
+        .into()
 }
 
 fn modal<'a, Message>(
