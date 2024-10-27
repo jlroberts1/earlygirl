@@ -16,9 +16,16 @@ const APP_INFO: AppInfo = AppInfo {
 const PREFS_KEY: &str = "earlygirl_preferences";
 
 fn main() -> iced::Result {
+    let window_settings = iced::window::Settings {
+        size: iced::Size::new(650.0, 400.0),
+        resizable: true,
+        ..Default::default()
+    };
+
     ::iced::application("Earlygirl", Earlygirl::update, Earlygirl::view)
         .theme(Earlygirl::theme)
         .subscription(Earlygirl::subscription)
+        .window(window_settings)
         .run()
 }
 
@@ -331,7 +338,7 @@ impl Earlygirl {
             .push(switch_timer_type_button)
             .push(reset_button);
 
-        let content = Column::new()
+        let column = Column::new()
             .align_x(Center)
             .spacing(20)
             .padding(20)
@@ -345,9 +352,10 @@ impl Earlygirl {
             let model = container(self.settings_modal())
                 .padding(10)
                 .style(container::rounded_box);
-            modal(content, model, Message::ToggleSettings)
+            modal(column, model, Message::ToggleSettings)
         } else {
-            Container::new(content)
+            Container::new(column)
+                .padding(20)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
