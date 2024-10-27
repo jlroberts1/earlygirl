@@ -1,7 +1,16 @@
+extern crate preferences;
 use iced::widget::{button, progress_bar, row, text, Column, Container, Row, Text};
 use iced::{keyboard, time, Center, Element, Length, Subscription, Theme};
 use notify_rust::Notification;
+use preferences::{AppInfo, Preferences};
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
+
+const APP_INFO: AppInfo = AppInfo {
+    name: "Earlygirl",
+    author: "Earlygirl",
+};
+const PREFS_KEY: &str = "earlygirl_preferences";
 
 fn main() -> iced::Result {
     ::iced::application("Earlygirl", Earlygirl::update, Earlygirl::view)
@@ -10,40 +19,39 @@ fn main() -> iced::Result {
         .run()
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+struct EarlyGirlPreferences {
+    work_interval: f64,
+    break_interval: f64,
+    auto_start_work: bool,
+    auto_start_break: bool,
+}
+
+impl Default for EarlyGirlPreferences {
+    fn default() -> Self {
+        Self {
+            work_interval: 45.0 * 60.0,
+            break_interval: 15.0 * 60.0,
+            auto_start_work: false,
+            auto_start_break: false,
+        }
+    }
+}
+
 struct Earlygirl {
     theme: Theme,
     current_timer_duration: f64,
     interval: f64,
     timer_type: TimerType,
     timer_state: TimerState,
-    timer_settings: TimerSettings,
+    preferences: EarlyGirlPreferences,
     show_modal: bool,
 }
 
 impl Default for Earlygirl {
     fn default() -> Self {
-        Self {
-            theme: Theme::CatppuccinMocha,
-            current_timer_duration: 0.0,
-            interval: 45.0 * 60.0,
-            timer_type: TimerType::WorkTime,
-            timer_state: TimerState::Idle,
-            timer_settings: TimerSettings {
-                work_interval: 45.0 * 60.0,
-                break_interval: 5.0 * 60.0,
-                auto_start_work: false,
-                auto_start_break: false,
-            },
-            show_modal: false,
-        }
+        Self::new()
     }
-}
-
-struct TimerSettings {
-    work_interval: f64,
-    break_interval: f64,
-    auto_start_work: bool,
-    auto_start_break: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +83,24 @@ enum Message {
 }
 
 impl Earlygirl {
+    fn new() -> Self {
+        let preferences = EarlyGirlPreferences::load(&APP_INFO, PREFS_KEY).unwrap_or_default();
+
+        let timer_state = TimerState::Idle;
+        let timer_type = TimerType::WorkTime;
+        let interval = preferences.work_interval;
+
+        Self {
+            theme: Theme::default(),
+            current_timer_duration: 0.0,
+            interval,
+            timer_type,
+            timer_state,
+            preferences,
+            show_modal: false,
+        }
+    }
+
     fn theme(&self) -> Theme {
         self.theme.clone()
     }
@@ -87,10 +113,7 @@ impl Earlygirl {
                         last_tick: Instant::now(),
                     };
                     self.current_timer_duration = 0.0;
-                    self.interval = match self.timer_type {
-                        TimerType::WorkTime => self.timer_settings.work_interval,
-                        TimerType::BreakTime => self.timer_settings.break_interval,
-                    };
+                    self.set_interval_for_work_type()
                 }
                 TimerState::Ticking { .. } => {
                     self.timer_state = TimerState::Idle;
@@ -103,76 +126,82 @@ impl Earlygirl {
                     *last_tick = now;
 
                     if self.current_timer_duration >= self.interval {
-                        match self.timer_type {
-                            TimerType::WorkTime => {
-                                self.interval = self.timer_settings.work_interval;
-                                let _ = Notification::new()
-                                    .summary("Time to get back to work!")
-                                    .appname("Earlygirl")
-                                    .show();
-                                self.timer_type = TimerType::BreakTime;
-                                self.current_timer_duration = 0.0;
-                                if !self.timer_settings.auto_start_break {
-                                    self.timer_state = TimerState::Idle;
-                                }
-                            }
-                            TimerType::BreakTime => {
-                                self.interval = self.timer_settings.break_interval;
-                                let _ = Notification::new()
-                                    .summary("Time for a break!")
-                                    .appname("Earlygirl")
-                                    .show();
-                                self.timer_type = TimerType::WorkTime;
-                                self.current_timer_duration = 0.0;
-                                if !self.timer_settings.auto_start_work {
-                                    self.timer_state = TimerState::Idle
-                                }
-                            }
-                        }
+                        self.send_notification();
+                        self.toggle_work_type();
                     };
                 }
             }
             Message::WorkIntervalChanged(new_interval) => {
-                self.timer_settings.work_interval = new_interval * 60.0;
-                if let TimerType::WorkTime = self.timer_type {
-                    self.interval = self.timer_settings.work_interval;
-                }
+                self.preferences.work_interval = new_interval * 60.0;
+                self.write_preferences();
+                self.set_interval_for_work_type();
             }
             Message::BreakIntervalChanged(new_interval) => {
-                self.timer_settings.break_interval = new_interval * 60.0;
-                if let TimerType::BreakTime = self.timer_type {
-                    self.interval = self.timer_settings.break_interval;
-                }
+                self.preferences.break_interval = new_interval * 60.0;
+                self.write_preferences();
+                self.set_interval_for_work_type();
             }
-            Message::Reset => {
-                self.timer_state = TimerState::Idle;
-                self.current_timer_duration = 0.0;
-                self.interval = self.timer_settings.work_interval;
-            }
-            Message::SwitchWorkType => {
-                match self.timer_type {
-                    TimerType::WorkTime => {
-                        self.timer_type = TimerType::BreakTime;
-                        self.interval = self.timer_settings.break_interval;
-                    }
-                    TimerType::BreakTime => {
-                        self.timer_type = TimerType::WorkTime;
-                        self.interval = self.timer_settings.work_interval;
-                    }
-                };
-                self.timer_state = TimerState::Idle;
-                self.current_timer_duration = 0.0;
-            }
-            Message::ToggleSettings => {
-                self.show_modal = !self.show_modal;
-            }
+            Message::Reset => self.reset_timer(),
+            Message::SwitchWorkType => self.toggle_work_type(),
+            Message::ToggleSettings => self.show_modal = !self.show_modal,
             Message::AutoStartWorkChanged(new_value) => {
-                self.timer_settings.auto_start_work = new_value;
+                self.preferences.auto_start_work = new_value;
+                self.write_preferences();
             }
             Message::AutoStartBreakChanged(new_value) => {
-                self.timer_settings.auto_start_break = new_value;
+                self.preferences.auto_start_break = new_value;
+                self.write_preferences();
             }
         }
+    }
+
+    fn send_notification(&self) {
+        let message = match self.timer_type {
+            TimerType::WorkTime => "Time to get back to work!",
+            TimerType::BreakTime => "Time for a break!",
+        };
+        let _ = Notification::new()
+            .summary(message)
+            .appname("Earlygirl")
+            .show();
+    }
+
+    fn reset_timer(&mut self) {
+        self.timer_state = TimerState::Idle;
+        self.current_timer_duration = 0.0;
+        self.set_interval_for_work_type();
+    }
+
+    fn toggle_work_type(&mut self) {
+        match self.timer_type {
+            TimerType::WorkTime => {
+                self.timer_type = TimerType::BreakTime;
+                self.interval = self.preferences.break_interval;
+                if !self.preferences.auto_start_break {
+                    self.timer_state = TimerState::Idle;
+                }
+            }
+            TimerType::BreakTime => {
+                self.timer_type = TimerType::WorkTime;
+                self.interval = self.preferences.work_interval;
+                if !self.preferences.auto_start_work {
+                    self.timer_state = TimerState::Idle;
+                }
+            }
+        };
+        self.current_timer_duration = 0.0;
+    }
+
+    fn set_interval_for_work_type(&mut self) {
+        match self.timer_type {
+            TimerType::WorkTime => self.interval = self.preferences.work_interval,
+            TimerType::BreakTime => self.interval = self.preferences.break_interval,
+        }
+    }
+
+    fn write_preferences(&self) {
+        let save_result = self.preferences.save(&APP_INFO, PREFS_KEY);
+        assert!(save_result.is_ok());
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -198,29 +227,29 @@ impl Earlygirl {
         const MINUTE: f64 = 60.0;
         let work_slider = iced::widget::slider(
             5.0..=60.0,
-            self.timer_settings.work_interval / MINUTE,
+            self.preferences.work_interval / MINUTE,
             Message::WorkIntervalChanged,
         )
         .step(5)
         .width(200);
         let break_slider = iced::widget::slider(
             5.0..=60.0,
-            self.timer_settings.break_interval / MINUTE,
+            self.preferences.break_interval / MINUTE,
             Message::BreakIntervalChanged,
         )
         .step(5)
         .width(200);
 
         let auto_start_work =
-            iced::widget::checkbox("Auto start work", self.timer_settings.auto_start_work)
+            iced::widget::checkbox("Auto start work", self.preferences.auto_start_work)
                 .on_toggle(Message::AutoStartWorkChanged);
 
         let auto_start_break =
-            iced::widget::checkbox("Auto start break", self.timer_settings.auto_start_break)
+            iced::widget::checkbox("Auto start break", self.preferences.auto_start_break)
                 .on_toggle(Message::AutoStartBreakChanged);
-        let work_value = self.timer_settings.work_interval / MINUTE;
+        let work_value = self.preferences.work_interval / MINUTE;
         let work_widget = row![Text::new(format!("{work_value} minutes"))].padding([0, 10]);
-        let break_value = self.timer_settings.break_interval / MINUTE;
+        let break_value = self.preferences.break_interval / MINUTE;
         let break_label = row![Text::new(format!("{break_value} minutes"))].padding([0, 10]);
 
         Column::new()

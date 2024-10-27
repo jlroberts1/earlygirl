@@ -7,3 +7,5 @@ edition = "2021"
 iced = { version = "0.13", features=["tokio"]}
 chrono = "0.4"
 notify-rust = "4"
+preferences = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
