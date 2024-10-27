@@ -7,7 +7,7 @@ use iced::{keyboard, time, Center, Color, Element, Length, Subscription, Theme};
 use notify_rust::Notification;
 use preferences::{AppInfo, Preferences};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Earlygirl",
@@ -68,14 +68,14 @@ enum TimerState {
     #[default]
     Idle,
     Ticking {
-        last_tick: Instant,
+        last_tick: SystemTime,
     },
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     Toggle,
-    Tick(Instant),
+    Tick(SystemTime),
     ToggleSettings,
     WorkIntervalChanged(f64),
     BreakIntervalChanged(f64),
@@ -113,7 +113,7 @@ impl Earlygirl {
             Message::Toggle => match self.timer_state {
                 TimerState::Idle => {
                     self.timer_state = TimerState::Ticking {
-                        last_tick: Instant::now(),
+                        last_tick: SystemTime::now(),
                     };
                     self.current_timer_duration = 0.0;
                     self.set_interval_for_work_type()
@@ -124,9 +124,11 @@ impl Earlygirl {
             },
             Message::Tick(now) => {
                 if let TimerState::Ticking { last_tick } = &mut self.timer_state {
-                    let time_elapsed = now.duration_since(*last_tick).as_secs_f64();
-                    self.current_timer_duration += time_elapsed;
-                    *last_tick = now;
+                    if let Ok(time_elapsed) = now.duration_since(*last_tick) {
+                        let elapsed_secs = time_elapsed.as_secs_f64();
+                        self.current_timer_duration += elapsed_secs;
+                        *last_tick = now;
+                    }
 
                     if self.current_timer_duration >= self.interval {
                         self.send_notification();
@@ -210,7 +212,9 @@ impl Earlygirl {
     fn subscription(&self) -> Subscription<Message> {
         let tick = match self.timer_state {
             TimerState::Idle => Subscription::none(),
-            TimerState::Ticking { .. } => time::every(Duration::from_millis(10)).map(Message::Tick),
+            TimerState::Ticking { .. } => {
+                time::every(Duration::from_millis(10)).map(|_| Message::Tick(SystemTime::now()))
+            }
         };
 
         fn handle_hotkey(key: keyboard::Key, _modifiers: keyboard::Modifiers) -> Option<Message> {
